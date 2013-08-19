@@ -1,4 +1,4 @@
-class User < ActiveRecord::Base
-	include ModelInterface	
+class User < AppModel
+	validates :name, :password, :presence => true
 end
 

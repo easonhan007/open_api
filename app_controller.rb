@@ -1,18 +1,18 @@
 require 'sinatra/base'
 require 'sinatra/activerecord'
-require './models/model_interface'
+require './models/app_model'
 require './models/user'
 require 'json'
 require './lib/ip_filter'
+require './lib/query_args'
 
 class AppController < Sinatra::Base
   register Sinatra::ActiveRecordExtension
+  register Sinatra::OpenApiQueryArgs
   helpers Sinatra::OpenApiIpFilter
 
   set :controllers, %w[users]
   set :environment, :development
-  set :max_records, 40
-  set :default_order, 'id desc'
 
   configure :development do
     set :database, { adapter: 'sqlite3', database: 'db/development.sqlite3' }
@@ -55,29 +55,33 @@ class AppController < Sinatra::Base
       }.to_json
     end
 
+    def contain_all_required_fields?(field_type)
+      return true if (fields = model.send(field_type)).empty?
+      fields.all? { |field| params.has_key?(field) and !params[field].empty? }
+    end
+
   end
 
   before '/' do
-    limit = params.delete('limit') 
-    @limit = limit and limit.to_i < settings.max_records ? limit : settings.max_records
-    order = params.delete('order')
-    @order = order ? order : settings.default_order
+    content_type :json
+
     if settings.filter_ip? and settings.current_user
-      json_status(403, 'not allowed ip') and halt unless filter_ip(settings.current_user.allowed_ip)
+      halt(403, 'your ip is not allowed'.to_json) unless filter_ip(settings.current_user.allowed_ip)
     end
+
   end
 
   get '/' do
-    content_type :json
+    halt(404, 'some fields required'.to_json) unless contain_all_required_fields?(:get_required_fields)
     records = []
-    model.all.limit(@limit).order(@order).each_with_index do |record|
+    puts params
+    model.where(params).limit(@limit).offset(@offset).order(@order).each_with_index do |record|
       records << record.json_output
     end #each
     '[' + records.join(',') + ']'
   end
 
   post '/' do
-    content_type :json
     json = json_params
     if result = model.send(:create, json)
       result.json_output
@@ -87,7 +91,6 @@ class AppController < Sinatra::Base
   end
 
   put '/' do
-    content_type :json
     json = json_params
     id = json.delete("id")
     json_status(404, 'id is required') unless id
