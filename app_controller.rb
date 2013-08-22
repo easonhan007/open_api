@@ -74,17 +74,13 @@ class AppController < Sinatra::Base
   get '/' do
     halt(404, 'some fields required'.to_json) unless contain_all_required_fields?(:get_required_fields)
     records = []
-    puts params
-    model.where(params).limit(@limit).offset(@offset).order(@order).each_with_index do |record|
-      records << record.json_output
-    end #each
-    '[' + records.join(',') + ']'
+    model.where(params).limit(@limit).offset(@offset).order(@order).to_json
   end
 
   post '/' do
     json = json_params
     if result = model.send(:create, json)
-      result.json_output
+      result.to_json
     else 
       json_status(404, 'failed to create')
     end #if
@@ -110,8 +106,6 @@ class AppController < Sinatra::Base
     id = json.delete("id")
     json_status(404, 'id is required') unless id
     record = model.send(:find, id) rescue nil
-    puts id
-    puts record
     result = nil
     result = record.destroy if record
     if result
